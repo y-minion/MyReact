@@ -25,14 +25,14 @@ export function diffTargetFinder(
       //타겟 찾는 즉시 함수 종료
       return matchedVNode;
     }
-    //root에 일치하는 키가 없으면 index비교로 이동
-    isKeyExist = false;
-  } else if (!oldVNodeArr![currentIndex]) matchedVNode = null;
-  // 비교할 대상이 없으므로 새로운 노드 생성을 간주_ 비교할 필요가 없다
-  else {
-    //비교할 수 있는 노드가 root 트리에 존재하는 경우
-    matchedVNode = oldVNodeArr![currentIndex];
   }
+
+  // 비교할 대상이 없으므로 새로운 노드 생성으로 간주_ 비교할 필요가 없다
+  if (!oldVNodeArr![currentIndex]) return (matchedVNode = null);
+
+  //비교할 수 있는 노드가 root 트리에 존재하는 경우
+  matchedVNode = oldVNodeArr![currentIndex];
+
   return matchedVNode as RenderedVNode | null;
 }
 
