@@ -8,6 +8,8 @@ type DiffTarget = RenderedVNode | null;
  * @param currentNewVNode 리렌더링으로 새로 생성되는 VNode
  * @param currentIndex 새로 생성되는 currentNewVNode의 현재 index
  * @returns 리렌더링으로 새로 생성되는 currentNewVNode와 비교를 할 수 있는 root트리의 RenderedVNode를 반환 한다. 이때 비교 가능한 노드가 없으면 Null을 반환 한다.
+ *
+ * diff비교를 하기 전 어떤 노드와 diffing을 할지 타겟을 찾는 함수입니다.
  */
 export function diffTargetFinder(
   oldVNodeArr: RenderedVNode["_renderedChildren"],
