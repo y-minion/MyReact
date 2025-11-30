@@ -105,3 +105,4 @@ export function getCurrentVNode(): VNode {
   return vnodeStack[vnodeStack.length - 1];
 }
 ```
+
