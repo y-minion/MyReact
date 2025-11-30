@@ -4,8 +4,7 @@ import type {
   VNode,
 } from "@/shared/types/vnode";
 
-let vnodeStack: VNode[] = [];
-
+let vnodeStack: VNode[] = []; // TODO: RenderedVNode 도 받을 수 있도록 type 수정 검토하기!
 export function pushCurrentVNode(vnode: VNode) {
   vnodeStack.push(vnode);
 }

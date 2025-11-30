@@ -13,7 +13,7 @@ export function internalRender(vnode: VNode, parent: Node): RenderedVNode {
   let renderedVNode: RenderedVNode = { ...vnode, _renderedChildren: [] };
 
   if (typeof vnode.type === "function") {
-    pushCurrentVNode(vnode);
+    pushCurrentVNode(renderedVNode);
     const resolvedComponent: VNode = vnode.type(vnode.props); //컴포넌트 해소
 
     // 해소된 Vnode를 internalRender 함수로 재귀한 값인 RenderedVNode를 상위노드와 연결해야 트리 구조가 만들어 진다.
