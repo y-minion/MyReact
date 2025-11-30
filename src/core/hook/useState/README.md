@@ -1,53 +1,65 @@
-# useState설계
+# useState Implementation Deep Dive
 
-- 내가 설계한 전체 흐름은 다음과 같다.
-  - 최초 렌더링시에(render 함수 실행시) VDOM을 돌면서 useState를 실행 시키는 순간에 useState에 의해 반환되는 각각의 setter 함수가 그 순간에는 현재의 해당하는 VNode를 알고 있으니까 내가 setter 함수에 클로저로 hookMetaData필드가 추가된 Vnode를 연결.
-  - 그러면 나중에 setter 함수가 실행될 때 해당 setter 함수 안에는 클로저로 어떤 VNode에서 실행이 되는지 알 수 있음.
-    그래서 setter 가 발생한 노드부터 리렌더링을 시작해서 rootVNode와 비교를 하면서 부분 수정을 한다.
+## 🎯 설계 목표
+`useState`는 함수형 컴포넌트가 **상태(State)**를 가질 수 있게 하는 핵심 Hook입니다.
+이 문서에서는 **"함수가 종료되면 사라지는 지역 변수와 달리, 어떻게 상태가 유지되는가?"**에 대한 구현 원리를 설명합니다.
 
-## useState란?
+## ⚙️ Core Logic: Closure & HookManager
 
-- `useState`는 React 함수형 컴포넌트 내에서 상태 변수를 선언하고 업데이트할 수 있도록 돕는 훅.
-- 여기서 ‘상태’는 시간이 지남에 따라 변할 수 있는 동적인 값(예: 버튼 클릭 횟수, 입력된 텍스트 등)을 의미.
-- `useState`는 이러한 **_상태 값이 변경될 때_**마다 컴포넌트를 자동으로 리렌더링하여 화면에 변경된 값을 반영
+`useState`의 마법은 **클로저(Closure)**와 **HookManager**의 연동에 있습니다.
 
-## 주요 기능
+### 1. 상태의 저장소 (Where)
+상태는 컴포넌트 함수 내부가 아니라, **VNode 객체의 `hookMetaData`** 라는 외부 저장소에 저장됩니다.
+`HookManager`는 현재 실행 중인 VNode(`currentVNode`)를 추적하고, `useState`는 이 VNode에 접근하여 상태를 읽거나 씁니다.
 
-```javascript
-//jsx
-import { useState } from "myReact";
+### 2. 실행 흐름 (Flow)
 
-function MyComponent() {
-  const [state, setState] = useState(initialValue);
-  // ... 컴포넌트 로직
+#### A. 최초 마운트 (Mount)
+1. `render` 함수가 컴포넌트를 실행합니다.
+2. `useState(initialValue)`가 호출됩니다.
+3. `HookManager.isInit()`이 `true`를 반환합니다.
+4. 초기값을 `VNode.hookMetaData.hooks` 배열에 저장합니다.
+5. `setState` 함수를 생성합니다. 이때 `setState`는 **자신이 속한 VNode를 클로저로 기억**합니다.
+
+#### B. 리렌더링 (Re-render)
+1. `setState`가 호출되면, 클로저로 기억해둔 VNode를 찾아 리렌더링을 트리거합니다.
+2. 컴포넌트 함수가 다시 실행됩니다.
+3. `useState`가 다시 호출됩니다.
+4. 이번에는 `HookManager.isInit()`이 `false`입니다.
+5. `VNode.hookMetaData.hooks` 배열에서 `pointer` 인덱스를 사용해 **이전 상태값**을 꺼내옵니다.
+6. 이 값을 반환하여 컴포넌트가 상태를 유지하게 합니다.
+
+## 📝 Code Analysis
+
+```typescript
+export function useState(initalValue: State) {
+  // 1. HookManager를 통해 현재 컨텍스트(VNode)에 접근할 수 있는 헬퍼들을 가져옵니다.
+  const [registerHookHelper, getVNode, getCurrentHookData, isInit] = useHookManger();
+  
+  let state: State;
+  let setState: SetState;
+
+  if (isInit()) {
+    // [Mount] 초기화 로직
+    state = initalValue;
+    setState = (arg: any) => {
+      // ... 상태 업데이트 로직 ...
+      // 리렌더링 트리거 (diff & patch)
+    };
+    // VNode에 Hook 등록
+    registerHookHelper(state, setState);
+  } else {
+    // [Re-render] 상태 복구 로직
+    // 현재 포인터가 가리키는 저장된 상태를 가져옴
+    const [currentState, currentSetState] = getCurrentHookData();
+    state = currentState;
+    setState = currentSetState;
+  }
+  
+  return [state, setState];
 }
 ```
 
-- `state`: 현재 상태 값.
-- `setState`: 상태 값을 업데이트 하는 함수. 이 함수를 호출 하면 컴포넌트가 새로운 값을 리렌더링 된다.
-- 다중 상태 변수 지원: 하나의 컴포넌트 내에서 여러 개의 `useState`를 사용하여 다양한 상태 변수를 가질 수 있다.
-
-## 설계
-
-- 우선 실행 시점으로 크게 분리해서 생각한다.
-  1. 최초 마운트 시점
-  2. 리렌더링 시점
-- 하지만 실행 시점을 판단 하려면 처음에 useState가 클로저로 VNode를 갖고있는지 확인한다.
-  - 클로저에 VNode가 존재하지 않으면 useHookManger를 이용해서 VNode의 접근 헬퍼 함수를 얻어서 useState의 클로저로 VNdoe를 등록한다.
-  - setter 함수로인해 리렌더링이 되는경우에는 useState의 클로저에 VNode가 존재하면 리렌더링 관련 로직을 실행한다.
-
-### 분기 처리 이후 로직
-
-- 우선 앞의 두가지 실행 시점으로 분기 처리가 되지만 어떤 상황이던 useState라는 함수는 항상 실행되고 이때마다 state와 setState는 반환이 되야한다.
-- setter 함수는 클로저로 해당 하는 VNode의 참조가 있어야 한다. -> 훅 매니저의 반환 함수인 getVNode를 호출 후 변수에 담아서 클로저로 갖고 있도록 한다.
-  - 이렇게 클로저로 갖고있으면 setter 함수가 어떤 노드에 실행되고 해당하는 위치의 setter 함수는 클로저로 getHookMetaData를 갖고있어서 state, setterFn, hookMetaData.pointer 이 정보를 알 수 있다.
-
-### 1. 최초 마운트 순간.
-
-- 이때 render함수가 호출되면서 useState함수도 호출된다.
-- 해당 함수 내부에서 해당하는 VNode의 hookMetaData필드의 hooks이 비어있는지 확인한다. -> 이때 훅 매니저의 isInit으로 판단.
-- 훅 매니저의 registerHookHelper 함수 이용. -> 해당 함수의 매개변수를 입력하기만 하면 해당 VNode에 등록이 된다.
-
-### 2. 리렌더링 시점
-
-- 이때는 setter 함수가 호출이 되는 순간 -> setter
+## 🔍 Key Takeaways
+*   **순서 의존성**: `hooks` 배열을 인덱스(`pointer`)로 접근하기 때문에, Hook의 호출 순서가 항상 일정해야 합니다. (조건문 안에서 Hook을 쓰면 안 되는 이유)
+*   **클로저의 활용**: `setState`는 자신이 생성된 시점의 VNode를 기억해야 하므로 클로저가 필수적입니다.
